@@ -326,6 +326,8 @@ FILE: foreach $input_file (@ARGV) {
 	$bitfield = unpack( "B[8]", substr( $bsi, $byte_pointer, 1 ) );
 	$byte_pointer += 1;
 	
+	print "***** bitfield: $bitfield *****\n";
+	
 	$bsid = binary_to_decimal( substr( $bitfield, 0, 5 ) );
 	$bsmod = binary_to_decimal( substr( $bitfield, 5, 3 ) );
 	
@@ -352,15 +354,17 @@ FILE: foreach $input_file (@ARGV) {
 	if ( $acmod ge 4 ) {
 		$surmixlev = binary_to_decimal( substr( $bitfield, $bit_pointer, 2 ) );
 		$bit_pointer += 2;
-	}
+	} else { $surmixlev = "not stated"; }
 	
 	# if acmod equals 2 (2/0 mode), next two bits are dsurmod (Dolby Surround Mode)
 	if ( $acmod eq 2 ) {
 		$dsurmod = binary_to_decimal( substr( $bitfield, $bit_pointer, 2 ) );
 		$bit_pointer += 2;
-	}
+	} else { $dsurmod = "not stated"; }
 	
 	# next bit is lefon (Low Frequency Effects Channel On)
+	$lfeon = substr( $bitfield, $bit_pointer, 1 );
+	$bit_pointer++;
 	
 	
 	
@@ -381,11 +385,20 @@ FILE: foreach $input_file (@ARGV) {
 	
 	print "bsmod: $bsmod\n";
 	print "acmod: $acmod\n";
+	### interpret these a bit, similar to cmixlev
 	
 	print "cmixlev: $cmixlev";
 	if ( $cmixlev ne "not stated" ) { print " = " . interpret_cmixlev( $cmixlev ); }
 	print "\n";
 	
+	print "surmixlev: $surmixlev\n";
+	### decode this a bit, similar to cmixlev
+	
+	print "dsurmod: $dsurmod\n";
+	### decode this a bit, similar to cmixlev
+	
+	print "lefon: $lfeon";
+	if ( $lfeon ) { print " (on)\n"; } else { print " (off)\n"; }
 	
 	
 	# finish up
