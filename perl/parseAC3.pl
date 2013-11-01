@@ -148,6 +148,38 @@ sub interpret_bsid {
 	return( $value );
 }
 
+# interpret_bsmod()
+#
+# bsmod		acmod		Type Of Service
+# '000'		any			main audio service: complete main (CM)
+# '001'		any			main audio service: music and effects (ME)
+# '010'		any			associated service: visually impaired (VI)
+# '011'		any			associated service: hearing impaired (HI)
+# '100'		any			associated service: dialogue (D)
+# '101'		any			associated service: commentary (C)
+# '110'		any			associated service: emergency (E)
+# '111'		'001'		associated service: voice over (VO)
+# '111'		'010'-'111'	main audio service: karaoke
+#
+sub interpret_bsmod {
+	my $bsmod_value = shift;
+	my $acmod_value = shift;
+	if ( $bsmod_value eq 0 ) { return "main audio service: complete main (CM)"; }
+	if ( $bsmod_value eq 1 ) { return "main audio service: music and effects (ME)"; }
+	if ( $bsmod_value eq 2 ) { return "associated service: visually impaired (VI)"; }
+	if ( $bsmod_value eq 3 ) { return "associated service: hearing impaired (HI)"; }
+	if ( $bsmod_value eq 4 ) { return "associated service: dialogue (D)"; }
+	if ( $bsmod_value eq 5 ) { return "associated service: commentary (C)"; }
+	if ( $bsmod_value eq 6 ) { return "associated service: emergency (E)"; }
+	if ( $bsmod_value eq 7 ) {
+		if ( $acmod_value eq 1 ) { return "associated service: voice over (VO)"; }
+		if ( ( $acmod_value ge 2 ) && ( $acmod_value le 7 ) ) {
+			return "main audio service: karaoke";
+		}
+	}
+	return "invalid";
+}
+
 # interpret_cmixlev()
 #
 # cmixlev
@@ -316,7 +348,9 @@ FILE: foreach $input_file (@ARGV) {
 
 	
 	my ( $bsid, $bsmod, $acmod, $cmixlev, $surmixlev, $dsurmod, $lfeon );
-
+	my ( $bsid_bitfield, $bsmod_bitfield, $acmod_bitfield );
+	my ( $cmixlev_bitfield, $surmixlev_bitfield, $dsurmod_bitfield );
+	
 	
 	# reset pointers
 	$byte_pointer = 0;
@@ -326,11 +360,11 @@ FILE: foreach $input_file (@ARGV) {
 	$bitfield = unpack( "B[8]", substr( $bsi, $byte_pointer, 1 ) );
 	$byte_pointer += 1;
 	
-	print "***** bitfield: $bitfield *****\n";
-	
-	$bsid = binary_to_decimal( substr( $bitfield, 0, 5 ) );
-	$bsmod = binary_to_decimal( substr( $bitfield, 5, 3 ) );
-	
+	$bsid_bitfield = substr( $bitfield, 0, 5 );
+	$bsid = binary_to_decimal( $bsid_bitfield );
+	$bsmod_bitfield = substr( $bitfield, 5, 3 );
+	$bsmod = binary_to_decimal( $bsmod_bitfield );
+		
 	# bsmod meaning is affected by acmod, which is the next three bits
 	# what comes after that can vary based on values of acmod
 	# one byte should be enough to cover all the possibilities
@@ -380,10 +414,10 @@ FILE: foreach $input_file (@ARGV) {
 	
 	
 	print "Bit Stream Information:\n";
-	print "bsid/bsmod bitfield: $bitfield\n";
-	print "bsid: $bsid (" . interpret_bsid( $bsid ) . ")\n";
+	print "Bit Stream Identification (bsid): $bsid_bitfield ($bsid) = " . interpret_bsid( $bsid ) . "\n";
 	
-	print "bsmod: $bsmod\n";
+	print "Bit Stream Mode (bsmod): $bsmod_bitfield ($bsmod) = " . interpret_bsmod( $bsmod, $acmod ) . "\n";
+#	print "Audio Coding Mode (acmod): $acmod_bitfield ($acmod) = " . "\n";
 	print "acmod: $acmod\n";
 	### interpret these a bit, similar to cmixlev
 	
