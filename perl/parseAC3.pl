@@ -138,7 +138,7 @@ FILE: foreach $input_file (@ARGV) {
 	# 	if (audprodie)
 	# 	{
 	# 		mixlev																// 5
-	#		roomtyp																// 3	(running total: 50)
+	#		roomtyp																// 2	(running total: 50)
 	# 	}
 	# 	if (acmod==0)	/* if in 1+1 mode (dual mono, so some items need a second value ) */
 	# 	{
@@ -248,17 +248,68 @@ FILE: foreach $input_file (@ARGV) {
 	$lfeon = substr( $bitfield, $bit_pointer, 1 );
 	$bit_pointer++;
 	
+	# next four bytes should cover the rest of the the first audio program's bsi
+	# so add them to the bitfield
+	$bitfield .= unpack( "B[32]", substr( $bsi, $byte_pointer, 4 ) );
+	$byte_pointer += 4;
+	
+	my ( $dialnorm_bitfield, $compre_bitfield, $compr_bitfield );
+	my ( $langcode_bitfield, $langcod_bitfield );
+	my ( $audprodie_bitfield, $mixlev_bitfield, $roomtyp_bitfield );
+	my ( $dialnorm, $compre, $compr, $langcode, $langcod, $audprodie, $mixlev, $roomtyp );
+	
+	# dialnorm
+	$dialnorm_bitfield = substr( $bitfield, $bit_pointer, 5 );
+	$dialnorm = binary_to_decimal( $dialnorm_bitfield );
+	$bit_pointer += 5;
+	
+	# Compression Gain
+	# next bit is Compression Gain Word Exists
+	$compre = substr( $bitfield, $bit_pointer, 1 );
+	$bit_pointer += 1;
+	# if compre is 1, next 8 bits are the compression gain value
+	$compr = "";
+	if ( $compre ) {
+		$compr_bitfield = substr( $bitfield, $bit_pointer, 8 );
+		$compr = binary_to_decimal( $compr_bitfield );
+		$bit_pointer += 8;
+	}
+	
+	my $compr_dB = compr_value( $compr_bitfield );
+	# it would be nice to round this to two decimal places
+	my $compr_dB_rounded = sprintf( "%.2f", $compr_dB );
+	
+	# Language Code
+	
+	$langcode = substr( $bitfield, $bit_pointer, 1 );
+	$bit_pointer += 1;
+	
+	$langcod = "";
+	if ( $langcode ) {
+		$langcod_bitfield = substr( $bitfield, $bit_pointer, 8 );
+		$langcod = binary_to_decimal( $langcod_bitfield );
+		$bit_pointer += 8;
+	}
+	
+	# Audio Production Information Exists
+	$audprodie = substr( $bitfield, $bit_pointer, 1 );
+	$bit_pointer += 1;
+	
+	# Mixing Level / Room Type
+	$mixlev = "";
+	$roomtyp = "";
+	if ( $audprodie ) {
+		$mixlev_bitfield = substr( $bitfield, $bit_pointer, 5 );
+		$mixlev = binary_to_decimal( $mixlev_bitfield );
+		$bit_pointer += 5;
+		
+		$roomtyp_bitfield = substr( $bitfield, $bit_pointer, 2 );
+		$roomtyp = binary_to_decimal( $roomtyp_bitfield );
+		$bit_pointer += 2;
+	}
 	
 	
-	### OK, we're now in a bit of a pickle
-	### if we're surround mode, we're used up all the bits of the byte
-	### if we're not, we have bits to process yet in the existing byte
-	###
-	### now that I've got the bit_pointer in place, we can just read more of the file
-	### append it on to the end of bitfield and keep parsing through
-	###
-	###
-	
+	# output report	
 	
 	print "Bit Stream Information:\n";
 	print "Bit Stream Identification (bsid): $bsid_bitfield ($bsid) = " . interpret_bsid( $bsid ) . "\n";
@@ -281,11 +332,36 @@ FILE: foreach $input_file (@ARGV) {
 		print " $dsurmod_bitfield ($dsurmod) = " . interpret_dsurmod( $dsurmod ) . "\n";
 	} else { print "not stated\n"; }
 	
-	print "lefon: $lfeon = ";
+	print "LFE Channel On (lefon): $lfeon = ";
 	if ( $lfeon ) { print "on\n"; } else { print "off\n"; }
 	
+	print "Compression Gain Word Exists (compre): $compre = ";
+	if ( $compre ) { print "true\n"; } else { print "false\n"; }
 	
-	#####
+	print "Compression Gain Word (compr): ";
+	if ( $compre ) { print "$compr_bitfield = $compr_dB_rounded dB\n"; }
+	else { print "not stated\n"; }
+	
+	print "Language Code Exists (langcode): $langcode = ";
+	if ( $langcode ) { print "true\n"; } else { print "false\n"; }
+	
+	print "Language Code (langcod): ";
+	if ( $langcode ) {
+		print "$langcod_bitfield ($langcod) = " . interpret_langcod( $langcod ) . "\n";
+	} else { print "not stated\n"; }
+	
+	print "Audio Produciton Information Exists (audprodie): $audprodie = ";
+	if ( $audprodie ) { print "true\n"; } else { print "false\n"; }
+	
+	print "Mixing Level (mixlev): ";
+	if ( $audprodie ) {
+		print "$mixlev_bitfield ($mixlev) = " . interpret_mixlev( $mixlev ) . "\n";
+	} else { print "not stated\n"; }
+	
+	print "Room Type (roomtyp): ";
+	if ( $audprodie ) {
+		print "$roomtyp_bitfield ($roomtyp) = " . interpret_roomtyp( $roomtyp ) . "\n";
+	} else { print "not stated\n"; }
 	
 	
 	# finish up
@@ -536,9 +612,382 @@ sub interpret_dsurmod {
 	if ( $dsurmod_value eq 3 ) { return "reserved"; }
 }
 
+#####
+#
+# interpret dialnorm()
+#
+# dialnorm 1..31 is -1 to -31 dB
+# dialnorm of 0 is reserved, but shall be -31 dB
+#
+#####
+sub interpret_dialnorm {
+	my $dialnorm_value = shift;
+	if ( $dialnorm_value eq 0 ) { return "reserved (-31 dB)"; }
+	else { return "-" . $dialnorm_value . " dB"; }
+}
+
+#####
+#
+# compr_value()
+#
+# take compression gain word bitfield
+#
+# compression gain word is 8 bits
+# XXXXYYYY
+# XXXX is a signed 4 bit integer (call this x)
+# (x+1)*6.02 dB is a starting value that can be -42.14 dB to +48.16
+#
+# YYYY is an unsigned integer (call this y)
+# 0.1YYYY (base 2), which can represent values of -0.28 dB to -6.02 dB
+# this is added to base x value, so the gain change can be from -48.16 dB to +47.89 dB
+#
+# I don't fully understand the 0.1YYYY bit yet
+# 
+# 
+#
+#####
+sub compr_value {
+	my @signed_nibble_table = (0,1,2,3,4,5,6,7,-8,-7,-6,-5,-4,-3,-2,-1);
+	
+	my $compr_word_bitfield = shift;
+	my $X_bitfield = substr( $compr_word_bitfield, 0, 4 );
+	my $Y_bitfield = substr( $compr_word_bitfield, 4, 4 );
+	
+	my $X_byte = "0000" . $X_bitfield;					# pad 4 msb with 0
+	my $X_value = binary_to_decimal( $X_bitfield );		# convert to an unsigned int value
+	
+	my $Y_value = 1 * ( 2 ** -1 );
+	$Y_value += substr( $Y_bitfield, 0, 1 ) * ( 2 ** -2 );
+	$Y_value += substr( $Y_bitfield, 1, 1 ) * ( 2 ** -3 );
+	$Y_value += substr( $Y_bitfield, 2, 1 ) * ( 2 ** -4 );
+	$Y_value += substr( $Y_bitfield, 3, 1 ) * ( 2 ** -5 );
+	
+	my $Y_gain_value = 20 * log( $Y_value ) / log( 10 );
+	
+	my $gain_value = ( ( @signed_nibble_table[$X_value] + 1 ) * 6.02 ) + ( 20 * log( $Y_value ) / log( 10 ) );
+	
+	return( $gain_value );
+}
 
 
 
+#####
+# 
+# interpret_langcod()
+#
+# OK, so this field was depreciated at some point before A/52:2012
+# in favor of ISO-639 language code in the wrapper
+# The current A/52 spec says this should be 0xFF
+# The original language list is below, taken from my C++ program
+#
+# 	switch( langcod )
+# 	{
+# 		case 0x0: return "(0x00) unknown/n.a."; break;
+# 		case 0x1: return "(0x01) Albanian"; break;
+# 		case 0x2: return "(0x02) Breton"; break;
+# 		case 0x3: return "(0x03) Catalan"; break;
+# 		case 0x4: return "(0x04) Croatian"; break;
+# 		case 0x5: return "(0x05) Welsh"; break;
+# 		case 0x6: return "(0x06) Czech"; break;
+# 		case 0x7: return "(0x07) Danish"; break;
+# 		case 0x8: return "(0x08) German"; break;
+# 		case 0x9: return "(0x09) English"; break;
+# 		case 0xA: return "(0x0A) Spanish"; break;
+# 		case 0xB: return "(0x0B) Esperanto"; break;
+# 		case 0xC: return "(0x0C) Estonian"; break;
+# 		case 0xD: return "(0x0D) Basque"; break;
+# 		case 0xE: return "(0x0E) Faroese"; break;
+# 		case 0xF: return "(0x0F) French"; break;
+# 		case 0x10: return "(0x10) Frisian"; break;
+# 		case 0x11: return "(0x11) Irish"; break;
+# 		case 0x12: return "(0x12) Gaelic"; break;
+# 		case 0x13: return "(0x13) Galician"; break;
+# 		case 0x14: return "(0x14) Icelandic"; break;
+# 		case 0x15: return "(0x15) Italian"; break;
+# 		case 0x16: return "(0x16) Lappish"; break;
+# 		case 0x17: return "(0x17) Latin"; break;
+# 		case 0x18: return "(0x18) Latvian"; break;
+# 		case 0x19: return "(0x19) Luxembourgian"; break;
+# 		case 0x1A: return "(0x1A) Lithuanian"; break;
+# 		case 0x1B: return "(0x1B) Hungarian"; break;
+# 		case 0x1C: return "(0x1C) Maltese"; break;
+# 		case 0x1D: return "(0x1D) Dutch"; break;
+# 		case 0x1E: return "(0x1E) Norwegian"; break;
+# 		case 0x1F: return "(0x1F) Occitan"; break;
+# 		case 0x20: return "(0x20) Polish"; break;
+# 		case 0x21: return "(0x21) Portuguese"; break;
+# 		case 0x22: return "(0x22) Romanian"; break;
+# 		case 0x23: return "(0x23) Romanish"; break;
+# 		case 0x24: return "(0x24) Serbian"; break;
+# 		case 0x25: return "(0x25) Slovak"; break;
+# 		case 0x26: return "(0x26) Slovene"; break;
+# 		case 0x27: return "(0x27) Finnish"; break;
+# 		case 0x28: return "(0x28) Swedish"; break;
+# 		case 0x29: return "(0x29) Turkish"; break;
+# 		case 0x2A: return "(0x2A) Flemish"; break;
+# 		case 0x2B: return "(0x2B) Waloon"; break;
+# 		case 0x2C: return "(0x2C)"; break;
+# 		case 0x2D: return "(0x2D)"; break;
+# 		case 0x2E: return "(0x2E)"; break;
+# 		case 0x2F: return "(0x2F)"; break;
+# 		case 0x30: return "(0x30) reserved"; break;
+# 		case 0x31: return "(0x31) reserved"; break;
+# 		case 0x32: return "(0x32) reserved"; break;
+# 		case 0x33: return "(0x33) reserved"; break;
+# 		case 0x34: return "(0x34) reserved"; break;
+# 		case 0x35: return "(0x35) reserved"; break;
+# 		case 0x36: return "(0x36) reserved"; break;
+# 		case 0x37: return "(0x37) reserved"; break;
+# 		case 0x38: return "(0x38) reserved"; break;
+# 		case 0x39: return "(0x39) reserved"; break;
+# 		case 0x3A: return "(0x3A) reserved"; break;
+# 		case 0x3B: return "(0x3B) reserved"; break;
+# 		case 0x3C: return "(0x3C) reserved"; break;
+# 		case 0x3D: return "(0x3D) reserved"; break;
+# 		case 0x3E: return "(0x3E) reserved"; break;
+# 		case 0x3F: return "(0x3F) reserved"; break;
+# 		case 0x40: return "(0x40) bg sound"; break;
+# 		case 0x41: return "(0x41)"; break;
+# 		case 0x42: return "(0x42)"; break;
+# 		case 0x43: return "(0x43)"; break;
+# 		case 0x44: return "(0x44)"; break;
+# 		case 0x45: return "(0x45) Zulu"; break;
+# 		case 0x46: return "(0x46) Vietnamese"; break;
+# 		case 0x47: return "(0x47) Uzbek"; break;
+# 		case 0x48: return "(0x48) Urdu"; break;
+# 		case 0x49: return "(0x49) Ukrainian"; break;
+# 		case 0x4A: return "(0x4A) Thai"; break;
+# 		case 0x4B: return "(0x4B) Telugu"; break;
+# 		case 0x4C: return "(0x4C) Tatar"; break;
+# 		case 0x4D: return "(0x4D) Tamil"; break;
+# 		case 0x4E: return "(0x4E) Tadzhik"; break;
+# 		case 0x4F: return "(0x4F) Swahili"; break;
+# 		case 0x50: return "(0x50) Sranan Tongo"; break;
+# 		case 0x51: return "(0x51) Somali"; break;
+# 		case 0x52: return "(0x52) Sinhalese"; break;
+# 		case 0x53: return "(0x53) Shona"; break;
+# 		case 0x54: return "(0x54) Serbo-Croat"; break;
+# 		case 0x55: return "(0x55) Ruthenian"; break;
+# 		case 0x56: return "(0x56) Russian"; break;
+# 		case 0x57: return "(0x57) Quechua"; break;
+# 		case 0x58: return "(0x58) Pustu"; break;
+# 		case 0x59: return "(0x59) Punjabi"; break;
+# 		case 0x5A: return "(0x5A) Persian"; break;
+# 		case 0x5B: return "(0x5B) Papamiento"; break;
+# 		case 0x5C: return "(0x5C) Oriya"; break;
+# 		case 0x5D: return "(0x5D) Nepali"; break;
+# 		case 0x5E: return "(0x5E) Ndebele"; break;
+# 		case 0x5F: return "(0x5F) Marathi"; break;
+# 		case 0x60: return "(0x60) Moldavian"; break;
+# 		case 0x61: return "(0x61) Malaysian"; break;
+# 		case 0x62: return "(0x62) Malagasay"; break;
+# 		case 0x63: return "(0x63) Macedonian"; break;
+# 		case 0x64: return "(0x64) Laotian"; break;
+# 		case 0x65: return "(0x65) Korean"; break;
+# 		case 0x66: return "(0x66) Khmer"; break;
+# 		case 0x67: return "(0x67) Kazakh"; break;
+# 		case 0x68: return "(0x68) Kannada"; break;
+# 		case 0x69: return "(0x69) Japanese"; break;
+# 		case 0x6A: return "(0x6A) Indonesian"; break;
+# 		case 0x6B: return "(0x6B) Hindi"; break;
+# 		case 0x6C: return "(0x6C) Hebrew"; break;
+# 		case 0x6D: return "(0x6D) Hausa"; break;
+# 		case 0x6E: return "(0x6E) Gurani"; break;
+# 		case 0x6F: return "(0x6F) Gujurati"; break;
+# 		case 0x70: return "(0x70) Greek"; break;
+# 		case 0x71: return "(0x71) Georgian"; break;
+# 		case 0x72: return "(0x72) Fulani"; break;
+# 		case 0x73: return "(0x73) Dari"; break;
+# 		case 0x74: return "(0x74) Churash"; break;
+# 		case 0x75: return "(0x75) Chinese"; break;
+# 		case 0x76: return "(0x76) Burmese"; break;
+# 		case 0x77: return "(0x77) Bulgarian"; break;
+# 		case 0x78: return "(0x78) Bengali"; break;
+# 		case 0x79: return "(0x79) Belorussian"; break;
+# 		case 0x7A: return "(0x7A) Bambora"; break;
+# 		case 0x7B: return "(0x7B) Azerbijani"; break;
+# 		case 0x7C: return "(0x7C) Assamese"; break;
+# 		case 0x7D: return "(0x7D) Armenian"; break;
+# 		case 0x7E: return "(0x7E) Arabic"; break;
+# 		case 0x7F: return "(0x7F) Amharic"; break;
+# 		default: return "Not recognized"; break;
+# 	}
+#
+#####
 
+sub interpret_langcod {
+	my $langcod_value = shift;
+	if ( $langcod_value eq 255 ) { return "reserved (default value)"; }
+	if ( $langcod_value eq 0 ) { return "unknown/NA"; }
+	if ( $langcod_value eq 1 ) { return "Albanian"; }
+	if ( $langcod_value eq 2 ) { return "Breton"; }
+	if ( $langcod_value eq 3 ) { return "Catalan"; }
+	if ( $langcod_value eq 4 ) { return "Croatian"; }
+	if ( $langcod_value eq 5 ) { return "Welsh"; }
+	if ( $langcod_value eq 6 ) { return "Czech"; }
+	if ( $langcod_value eq 7 ) { return "Danish"; }
+	if ( $langcod_value eq 8 ) { return "German"; }
+	if ( $langcod_value eq 9 ) { return "English"; }
+	if ( $langcod_value eq 10 ) { return "Spanish"; }
+	if ( $langcod_value eq 11 ) { return "Esperanto"; }
+	if ( $langcod_value eq 12 ) { return "Estonian"; }
+	if ( $langcod_value eq 13 ) { return "Basque"; }
+	if ( $langcod_value eq 14 ) { return "Faroese"; }
+	if ( $langcod_value eq 15 ) { return "French"; }
+	if ( $langcod_value eq 16 ) { return "Frisian"; }
+	if ( $langcod_value eq 17 ) { return "Irish"; }
+	if ( $langcod_value eq 18 ) { return "Gaelic"; }
+	if ( $langcod_value eq 19 ) { return "Galician"; }
+	if ( $langcod_value eq 20 ) { return "Icelandic"; }
+	if ( $langcod_value eq 21 ) { return "Italian"; }
+	if ( $langcod_value eq 22 ) { return "Lappish"; }
+	if ( $langcod_value eq 23 ) { return "Latin"; }
+	if ( $langcod_value eq 24 ) { return "Latvian"; }
+	if ( $langcod_value eq 25 ) { return "Luxembourgian"; }
+	if ( $langcod_value eq 26 ) { return "Lithuanian"; }
+	if ( $langcod_value eq 27 ) { return "Hungarian"; }
+	if ( $langcod_value eq 28 ) { return "Maltese"; }
+	if ( $langcod_value eq 29 ) { return "Dutch"; }
+	if ( $langcod_value eq 30 ) { return "Norwegian"; }
+	if ( $langcod_value eq 31 ) { return "Occitan"; }
+	if ( $langcod_value eq 32 ) { return "Polish"; }
+	if ( $langcod_value eq 33 ) { return "Portuguese"; }
+	if ( $langcod_value eq 34 ) { return "Romanian"; }
+	if ( $langcod_value eq 35 ) { return "Romanish"; }
+	if ( $langcod_value eq 36 ) { return "Serbian"; }
+	if ( $langcod_value eq 37 ) { return "Slovak"; }
+	if ( $langcod_value eq 38 ) { return "Slovene"; }
+	if ( $langcod_value eq 39 ) { return "Finnish"; }
+	if ( $langcod_value eq 40 ) { return "Swedish"; }
+	if ( $langcod_value eq 41 ) { return "Turkish"; }
+	if ( $langcod_value eq 42 ) { return "Flemish"; }
+	if ( $langcod_value eq 43 ) { return "Waloon"; }
+	if ( $langcod_value eq 44 ) { return "undefined"; }
+	if ( $langcod_value eq 45 ) { return "undefined"; }
+	if ( $langcod_value eq 46 ) { return "undefined"; }
+	if ( $langcod_value eq 47 ) { return "undefined"; }
+	if ( $langcod_value eq 48 ) { return "reserved"; }
+	if ( $langcod_value eq 49 ) { return "reserved"; }
+	if ( $langcod_value eq 50 ) { return "reserved"; }
+	if ( $langcod_value eq 51 ) { return "reserved"; }
+	if ( $langcod_value eq 52 ) { return "reserved"; }
+	if ( $langcod_value eq 53 ) { return "reserved"; }
+	if ( $langcod_value eq 54 ) { return "reserved"; }
+	if ( $langcod_value eq 55 ) { return "reserved"; }
+	if ( $langcod_value eq 56 ) { return "reserved"; }
+	if ( $langcod_value eq 57 ) { return "reserved"; }
+	if ( $langcod_value eq 58 ) { return "reserved"; }
+	if ( $langcod_value eq 59 ) { return "reserved"; }
+	if ( $langcod_value eq 60 ) { return "reserved"; }
+	if ( $langcod_value eq 61 ) { return "reserved"; }
+	if ( $langcod_value eq 62 ) { return "reserved"; }
+	if ( $langcod_value eq 63 ) { return "reserved"; }
+	if ( $langcod_value eq 64 ) { return "bg sound"; }
+	if ( $langcod_value eq 65 ) { return "unknown"; }
+	if ( $langcod_value eq 66 ) { return "unknown"; }
+	if ( $langcod_value eq 67 ) { return "unknown"; }
+	if ( $langcod_value eq 68 ) { return "unknown"; }
+	if ( $langcod_value eq 69 ) { return "Zulu"; }
+	if ( $langcod_value eq 70 ) { return "Vietnamese"; }
+	if ( $langcod_value eq 71 ) { return "Uzbek"; }
+	if ( $langcod_value eq 72 ) { return "Urdu"; }
+	if ( $langcod_value eq 73 ) { return "Ukrainian"; }
+	if ( $langcod_value eq 74 ) { return "Thai"; }
+	if ( $langcod_value eq 75 ) { return "Telugu"; }
+	if ( $langcod_value eq 76 ) { return "Tatar"; }
+	if ( $langcod_value eq 77 ) { return "Tamil"; }
+	if ( $langcod_value eq 78 ) { return "Tadzhik"; }
+	if ( $langcod_value eq 79 ) { return "Swahili"; }
+	if ( $langcod_value eq 80 ) { return "Sranan Tongo"; }
+	if ( $langcod_value eq 81 ) { return "Somali"; }
+	if ( $langcod_value eq 82 ) { return "Sinhalese"; }
+	if ( $langcod_value eq 83 ) { return "Shona"; }
+	if ( $langcod_value eq 84 ) { return "Serbo-Croat"; }
+	if ( $langcod_value eq 85 ) { return "Ruthenian"; }
+	if ( $langcod_value eq 86 ) { return "Russian"; }
+	if ( $langcod_value eq 87 ) { return "Quechua"; }
+	if ( $langcod_value eq 88 ) { return "Pustu"; }
+	if ( $langcod_value eq 89 ) { return "Punjabi"; }
+	if ( $langcod_value eq 90 ) { return "Persian"; }
+	if ( $langcod_value eq 91 ) { return "Papamiento"; }
+	if ( $langcod_value eq 92 ) { return "Oriya"; }
+	if ( $langcod_value eq 93 ) { return "Nepali"; }
+	if ( $langcod_value eq 94 ) { return "Ndebele"; }
+	if ( $langcod_value eq 95 ) { return "Marathi"; }
+	if ( $langcod_value eq 96 ) { return "Moldavian"; }	
+	if ( $langcod_value eq 97 ) { return "Malaysian"; }
+	if ( $langcod_value eq 98 ) { return "Malagasay"; }
+	if ( $langcod_value eq 99 ) { return "Macedonian"; }
+	if ( $langcod_value eq 100 ) { return "Laotian"; }
+	if ( $langcod_value eq 101 ) { return "Korean"; }
+	if ( $langcod_value eq 102 ) { return "Khmer"; }
+	if ( $langcod_value eq 103 ) { return "Kazakh"; }
+	if ( $langcod_value eq 104 ) { return "Kannada"; }
+	if ( $langcod_value eq 105 ) { return "Japanese"; }
+	if ( $langcod_value eq 106 ) { return "Indonesian"; }
+	if ( $langcod_value eq 107 ) { return "Hindi"; }
+	if ( $langcod_value eq 108 ) { return "Hebrew"; }
+	if ( $langcod_value eq 109 ) { return "Hausa"; }
+	if ( $langcod_value eq 110 ) { return "Gurani"; }
+	if ( $langcod_value eq 111 ) { return "Gujurati"; }
+	if ( $langcod_value eq 112 ) { return "Greek"; }
+	if ( $langcod_value eq 113 ) { return "Georgian"; }
+	if ( $langcod_value eq 114 ) { return "Fulani"; }
+	if ( $langcod_value eq 115 ) { return "Dari"; }
+	if ( $langcod_value eq 116 ) { return "Churash"; }
+	if ( $langcod_value eq 117 ) { return "Chinese"; }
+	if ( $langcod_value eq 118 ) { return "Burmese"; }
+	if ( $langcod_value eq 119 ) { return "Bulgarian"; }
+	if ( $langcod_value eq 120 ) { return "Bengali"; }
+	if ( $langcod_value eq 121 ) { return "Belorussian"; }
+	if ( $langcod_value eq 122 ) { return "Bambora"; }
+	if ( $langcod_value eq 123 ) { return "Azerbijani"; }
+	if ( $langcod_value eq 124 ) { return "Assamese"; }
+	if ( $langcod_value eq 125 ) { return "Armenian"; }
+	if ( $langcod_value eq 126 ) { return "Arabic"; }
+	if ( $langcod_value eq 127 ) { return "Amharic"; }
 
+	return( "not recognized" );
+}
 
+#####
+#
+# interpret_mixlev()
+#
+# Interpret Mixing Level (mixlev)
+#
+# This 5-bit code indicates the absolute acoustic sound pressure level of an individual
+# channel during the final audio mixing session. The 5-bit code represents a value in the
+# range 0 to 31. The peak mixing level is 80 plus the value of mixlevel dB SPL, or
+# 80 to 111 dB SPL. The peak mixing level is the acoustic level of a sine wave in a single
+# channel whose peaks reach 100 percent in the PCM representation. The absolute SPL value
+# is typically measured by means of pink noise with an RMS value of -20 or -30 dB with
+# respect to the peak RMS sine wave level. The value of mixlevel is not typically used
+# within the AC-3 decoder, but may be used by other parts of the audio reproduction equipment.
+#
+#####
+sub interpret_mixlev {
+	my $mixlev_value = shift;
+	return( $mixlev_value + 80 );
+}
+
+#####
+#
+# interpret_roomtyp()
+#
+# Interpret Room Type (roomtyp)
+#
+# roomtyp		Type of Mixing Room
+# '00'			not indicated
+# '01'			large room, X curve monitor
+# '10'			small room, flat monitor
+# '11'			reserved
+#
+#####
+sub interpret_roomtyp {
+	my $roomtyp_value = shift;
+	if ( $roomtyp_value eq 0 ) { return "not indicated"; }
+	if ( $roomtyp_value eq 1 ) { return "large room, X curve monitor"; }
+	if ( $roomtyp_value eq 2 ) { return "small room, flat monitor"; }
+	if ( $roomtyp_value eq 3 ) { return "reserved"; }
+}
