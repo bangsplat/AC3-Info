@@ -31,11 +31,16 @@ my ( $input_file, $errors, $warnings, $extension, $result, $file_size );
 my ( $byte, $bitfield );
 my ( $syncinfo, $syncword, $crc1, $fscod, $frmsizecod );
 my ( $bitrate_in_kbps, $sampling_rate_in_khz, $num_words_in_syncframe );
-my $syncframe_size;
-my $total_syncframes;
-my $total_seconds;
-my $bsi;
+my ( $syncframe_size, $total_syncframes, $total_seconds );
 my ( $byte_pointer, $bit_pointer );
+my $bsi;
+my ( $dialnorm_bitfield, $compre_bitfield, $compr_bitfield );
+my ( $langcode_bitfield, $langcod_bitfield );
+my ( $audprodie_bitfield, $mixlev_bitfield, $roomtyp_bitfield );
+my ( $dialnorm, $compre, $compr, $langcode, $langcod, $audprodie, $mixlev, $roomtyp );
+my ( $dialnorm2_bitfield, $compr2e_bitfield, $compr2_bitfield, $langcod2e_bitfield );
+my ( $langcod2_bitfield, $audprodi2e_bitfield, $mixlev2_bitfield, $roomtyp2_bitfield );
+my ( $dialnorm2, $compr2e, $compr2, $langcod2e, $langcod2, $audprodi2e, $mixlev2, $roomtyp2 );
 
 
 # main
@@ -145,7 +150,7 @@ FILE: foreach $input_file (@ARGV) {
 	# 		dialnorm2															// 5
 	# 		compr2e																// 1
 	# 		if (compr2e) {compr2}												// 8
-	# 		langcod2															// 1
+	# 		langcod2e															// 1
 	# 		if (langcod2e) {langcod2}											// 8
 	# 		audprodi2e															// 1	(running total: 74)
 	# 		if (auddprodi2e)
@@ -253,11 +258,6 @@ FILE: foreach $input_file (@ARGV) {
 	$bitfield .= unpack( "B[32]", substr( $bsi, $byte_pointer, 4 ) );
 	$byte_pointer += 4;
 	
-	my ( $dialnorm_bitfield, $compre_bitfield, $compr_bitfield );
-	my ( $langcode_bitfield, $langcod_bitfield );
-	my ( $audprodie_bitfield, $mixlev_bitfield, $roomtyp_bitfield );
-	my ( $dialnorm, $compre, $compr, $langcode, $langcod, $audprodie, $mixlev, $roomtyp );
-	
 	# dialnorm
 	$dialnorm_bitfield = substr( $bitfield, $bit_pointer, 5 );
 	$dialnorm = binary_to_decimal( $dialnorm_bitfield );
@@ -308,8 +308,77 @@ FILE: foreach $input_file (@ARGV) {
 		$bit_pointer += 2;
 	}
 	
+	### in 1+1 dual mono mode, some items need a second value
+	if ( $acmod eq 0 ) {
+		
+		# dialnorm2
+		$dialnorm2_bitfield = substr( $bitfield, $bit_pointer, 5 );
+		$dialnorm2 = binary_to_decimal( $dialnorm2_bitfield );
+		$bit_pointer += 5;
+		
+		# compr2e
+		$compr2e = substr( $bitfield, $bit_pointer, 1 );
+		$bit_pointer += 1;
+		
+		# compr2
+		$compr2 = "";
+		if ( $compr2e ) {
+			$compr2_bitfield = substr( $bitfield, $bit_pointer, 8 );
+			$compr2 = binary_to_decimal( $compr2_bitfield );
+			$bit_pointer += 8;
+		}
+		
+		# langcod2e
+		$langcod2e = substr( $bitfield, $bit_pointer, 1 );
+		$bit_pointer += 1;
+		
+		# langcod2
+		$langcod2 = "";
+		if ( $langcod2e ) {
+			$langcod2_bitfield = substr( $bitfield, $bit_pointer, 8 );
+			$langcod2 = binary_to_decimal( $langcod2_bitfield );
+			$bit_pointer += 8;
+		}
+		
+		# audprodi2e
+		$audprodi2e = substr( $bitfield, $bit_pointer, 1 );
+		$bit_pointer += 1;
+		
+		# mixlev2 / roomtyp2
+		$mixlev2 = "";
+		$roomtyp2 = "";
+		if ( $audprodi2e ) {
+			$mixlev2_bitfield = substr( $bitfield, $bit_pointer, 5 );
+			$mixlev2 = binary_to_decimal( $mixlev2_bitfield );
+			$bit_pointer += 5;
+			
+			$roomtyp2_bitfield = substr( $bitfield, $bit_pointer, 2 );
+			$roomtyp2 = binary_to_decimal( $roomtyp2_bitfield );
+			$bit_pointer += 2;
+		}
+	}
 	
-	# output report	
+	#####	the rest of the bsi
+	
+	
+# 	copyrightb																// 1
+# 	origbs																	// 1
+# 	timecod1e																// 1
+# 	if (timecod1e) {timecod1}												// 14
+# 	timecod2e																// 1
+# 	if (timecod2e) {timecod2}												// 14
+# 	addbside																// 1	(running total: 114)
+# 	if (addbsie)
+# 	{
+# 		addbsil																// 6	(running total: 120)
+# 		addbsi																// (addbisil+1)x8	(up to 64)
+# 	}
+	
+	
+	
+	
+	
+	### output report	
 	
 	print "Bit Stream Information:\n";
 	print "Bit Stream Identification (bsid): $bsid_bitfield ($bsid) = " . interpret_bsid( $bsid ) . "\n";
@@ -334,6 +403,11 @@ FILE: foreach $input_file (@ARGV) {
 	
 	print "LFE Channel On (lefon): $lfeon = ";
 	if ( $lfeon ) { print "on\n"; } else { print "off\n"; }
+	
+	print "\n";
+	print "Primary Audio Stream Information:\n";
+	
+	print "Dialog Normalizaton (dilanorm): $dialnorm_bitfield ($dialnorm) = " . interpret_dialnorm( $dialnorm ) . "\n";
 	
 	print "Compression Gain Word Exists (compre): $compre = ";
 	if ( $compre ) { print "true\n"; } else { print "false\n"; }
@@ -362,6 +436,64 @@ FILE: foreach $input_file (@ARGV) {
 	if ( $audprodie ) {
 		print "$roomtyp_bitfield ($roomtyp) = " . interpret_roomtyp( $roomtyp ) . "\n";
 	} else { print "not stated\n"; }
+	
+	#####
+	# 1+1 second stream bsi
+	#####
+	print "\n";
+	print "Secondary Audio Stream Informaion (1+1 Mode):\n";
+	
+	print "Dialog Normalizaton (dilanorm2): ";
+	if ( $acmod eq 0 ) {
+		print "$dialnorm2_bitfield ($dialnorm2) = " . interpret_dialnorm( $dialnorm2 ) . "\n";
+	} else { print "not applicable\n"; }
+	
+# 	print "Dialog Normalizaton (dilanorm): $dialnorm_bitfield ($dialnorm) = " . interpret_dialnorm( $dialnorm ) . "\n";
+# 	
+# 	print "Compression Gain Word Exists (compre): $compre = ";
+# 	if ( $compre ) { print "true\n"; } else { print "false\n"; }
+# 	
+# 	print "Compression Gain Word (compr): ";
+# 	if ( $compre ) { print "$compr_bitfield = $compr_dB_rounded dB\n"; }
+# 	else { print "not stated\n"; }
+# 	
+# 	print "Language Code Exists (langcode): $langcode = ";
+# 	if ( $langcode ) { print "true\n"; } else { print "false\n"; }
+# 	
+# 	print "Language Code (langcod): ";
+# 	if ( $langcode ) {
+# 		print "$langcod_bitfield ($langcod) = " . interpret_langcod( $langcod ) . "\n";
+# 	} else { print "not stated\n"; }
+# 	
+# 	print "Audio Produciton Information Exists (audprodie): $audprodie = ";
+# 	if ( $audprodie ) { print "true\n"; } else { print "false\n"; }
+# 	
+# 	print "Mixing Level (mixlev): ";
+# 	if ( $audprodie ) {
+# 		print "$mixlev_bitfield ($mixlev) = " . interpret_mixlev( $mixlev ) . "\n";
+# 	} else { print "not stated\n"; }
+# 	
+# 	print "Room Type (roomtyp): ";
+# 	if ( $audprodie ) {
+# 		print "$roomtyp_bitfield ($roomtyp) = " . interpret_roomtyp( $roomtyp ) . "\n";
+# 	} else { print "not stated\n"; }
+# 	
+	
+	
+# 	if (acmod==0)	/* if in 1+1 mode (dual mono, so some items need a second value ) */
+# 	{
+# 		dialnorm2															// 5
+# 		compr2e																// 1
+# 		if (compr2e) {compr2}												// 8
+# 		langcod2e															// 1
+# 		if (langcod2e) {langcod2}											// 8
+# 		audprodi2e															// 1	(running total: 74)
+# 		if (auddprodi2e)
+# 		{
+# 			mixlev2															// 5
+# 			roomtyp2														// 2	(running total: 81)
+# 		}
+#	}
 	
 	
 	# finish up
@@ -555,6 +687,8 @@ sub interpret_acmod {
 #
 # interpret_cmixlev()
 #
+# interpret Center Mix Level (cmixlev)
+#
 # cmixlev
 # '00' (0) = 0.707 (-3.0 dB)
 # '01' (1) = 0.595 (-4.5 dB)
@@ -595,7 +729,7 @@ sub interpret_surmixlev {
 #
 # interpret_dsurmod()
 #
-# interpret Dolby Surround mode (dsmod)
+# interpret Dolby Surround Mode (dsmod)
 # 
 # dsmod		Indication
 # '00'		not indicated
@@ -615,6 +749,8 @@ sub interpret_dsurmod {
 #####
 #
 # interpret dialnorm()
+#
+# interpret Dialog Normalization (dialnorm)
 #
 # dialnorm 1..31 is -1 to -31 dB
 # dialnorm of 0 is reserved, but shall be -31 dB
@@ -669,152 +805,20 @@ sub compr_value {
 	return( $gain_value );
 }
 
-
-
 #####
 # 
 # interpret_langcod()
 #
+# interpret Language Code (langocd)
+#
 # OK, so this field was depreciated at some point before A/52:2012
 # in favor of ISO-639 language code in the wrapper
-# The current A/52 spec says this should be 0xFF
-# The original language list is below, taken from my C++ program
+# the current A/52 spec says this should be 0xFF
+# but in most cases, the value will be 0x9, English
 #
-# 	switch( langcod )
-# 	{
-# 		case 0x0: return "(0x00) unknown/n.a."; break;
-# 		case 0x1: return "(0x01) Albanian"; break;
-# 		case 0x2: return "(0x02) Breton"; break;
-# 		case 0x3: return "(0x03) Catalan"; break;
-# 		case 0x4: return "(0x04) Croatian"; break;
-# 		case 0x5: return "(0x05) Welsh"; break;
-# 		case 0x6: return "(0x06) Czech"; break;
-# 		case 0x7: return "(0x07) Danish"; break;
-# 		case 0x8: return "(0x08) German"; break;
-# 		case 0x9: return "(0x09) English"; break;
-# 		case 0xA: return "(0x0A) Spanish"; break;
-# 		case 0xB: return "(0x0B) Esperanto"; break;
-# 		case 0xC: return "(0x0C) Estonian"; break;
-# 		case 0xD: return "(0x0D) Basque"; break;
-# 		case 0xE: return "(0x0E) Faroese"; break;
-# 		case 0xF: return "(0x0F) French"; break;
-# 		case 0x10: return "(0x10) Frisian"; break;
-# 		case 0x11: return "(0x11) Irish"; break;
-# 		case 0x12: return "(0x12) Gaelic"; break;
-# 		case 0x13: return "(0x13) Galician"; break;
-# 		case 0x14: return "(0x14) Icelandic"; break;
-# 		case 0x15: return "(0x15) Italian"; break;
-# 		case 0x16: return "(0x16) Lappish"; break;
-# 		case 0x17: return "(0x17) Latin"; break;
-# 		case 0x18: return "(0x18) Latvian"; break;
-# 		case 0x19: return "(0x19) Luxembourgian"; break;
-# 		case 0x1A: return "(0x1A) Lithuanian"; break;
-# 		case 0x1B: return "(0x1B) Hungarian"; break;
-# 		case 0x1C: return "(0x1C) Maltese"; break;
-# 		case 0x1D: return "(0x1D) Dutch"; break;
-# 		case 0x1E: return "(0x1E) Norwegian"; break;
-# 		case 0x1F: return "(0x1F) Occitan"; break;
-# 		case 0x20: return "(0x20) Polish"; break;
-# 		case 0x21: return "(0x21) Portuguese"; break;
-# 		case 0x22: return "(0x22) Romanian"; break;
-# 		case 0x23: return "(0x23) Romanish"; break;
-# 		case 0x24: return "(0x24) Serbian"; break;
-# 		case 0x25: return "(0x25) Slovak"; break;
-# 		case 0x26: return "(0x26) Slovene"; break;
-# 		case 0x27: return "(0x27) Finnish"; break;
-# 		case 0x28: return "(0x28) Swedish"; break;
-# 		case 0x29: return "(0x29) Turkish"; break;
-# 		case 0x2A: return "(0x2A) Flemish"; break;
-# 		case 0x2B: return "(0x2B) Waloon"; break;
-# 		case 0x2C: return "(0x2C)"; break;
-# 		case 0x2D: return "(0x2D)"; break;
-# 		case 0x2E: return "(0x2E)"; break;
-# 		case 0x2F: return "(0x2F)"; break;
-# 		case 0x30: return "(0x30) reserved"; break;
-# 		case 0x31: return "(0x31) reserved"; break;
-# 		case 0x32: return "(0x32) reserved"; break;
-# 		case 0x33: return "(0x33) reserved"; break;
-# 		case 0x34: return "(0x34) reserved"; break;
-# 		case 0x35: return "(0x35) reserved"; break;
-# 		case 0x36: return "(0x36) reserved"; break;
-# 		case 0x37: return "(0x37) reserved"; break;
-# 		case 0x38: return "(0x38) reserved"; break;
-# 		case 0x39: return "(0x39) reserved"; break;
-# 		case 0x3A: return "(0x3A) reserved"; break;
-# 		case 0x3B: return "(0x3B) reserved"; break;
-# 		case 0x3C: return "(0x3C) reserved"; break;
-# 		case 0x3D: return "(0x3D) reserved"; break;
-# 		case 0x3E: return "(0x3E) reserved"; break;
-# 		case 0x3F: return "(0x3F) reserved"; break;
-# 		case 0x40: return "(0x40) bg sound"; break;
-# 		case 0x41: return "(0x41)"; break;
-# 		case 0x42: return "(0x42)"; break;
-# 		case 0x43: return "(0x43)"; break;
-# 		case 0x44: return "(0x44)"; break;
-# 		case 0x45: return "(0x45) Zulu"; break;
-# 		case 0x46: return "(0x46) Vietnamese"; break;
-# 		case 0x47: return "(0x47) Uzbek"; break;
-# 		case 0x48: return "(0x48) Urdu"; break;
-# 		case 0x49: return "(0x49) Ukrainian"; break;
-# 		case 0x4A: return "(0x4A) Thai"; break;
-# 		case 0x4B: return "(0x4B) Telugu"; break;
-# 		case 0x4C: return "(0x4C) Tatar"; break;
-# 		case 0x4D: return "(0x4D) Tamil"; break;
-# 		case 0x4E: return "(0x4E) Tadzhik"; break;
-# 		case 0x4F: return "(0x4F) Swahili"; break;
-# 		case 0x50: return "(0x50) Sranan Tongo"; break;
-# 		case 0x51: return "(0x51) Somali"; break;
-# 		case 0x52: return "(0x52) Sinhalese"; break;
-# 		case 0x53: return "(0x53) Shona"; break;
-# 		case 0x54: return "(0x54) Serbo-Croat"; break;
-# 		case 0x55: return "(0x55) Ruthenian"; break;
-# 		case 0x56: return "(0x56) Russian"; break;
-# 		case 0x57: return "(0x57) Quechua"; break;
-# 		case 0x58: return "(0x58) Pustu"; break;
-# 		case 0x59: return "(0x59) Punjabi"; break;
-# 		case 0x5A: return "(0x5A) Persian"; break;
-# 		case 0x5B: return "(0x5B) Papamiento"; break;
-# 		case 0x5C: return "(0x5C) Oriya"; break;
-# 		case 0x5D: return "(0x5D) Nepali"; break;
-# 		case 0x5E: return "(0x5E) Ndebele"; break;
-# 		case 0x5F: return "(0x5F) Marathi"; break;
-# 		case 0x60: return "(0x60) Moldavian"; break;
-# 		case 0x61: return "(0x61) Malaysian"; break;
-# 		case 0x62: return "(0x62) Malagasay"; break;
-# 		case 0x63: return "(0x63) Macedonian"; break;
-# 		case 0x64: return "(0x64) Laotian"; break;
-# 		case 0x65: return "(0x65) Korean"; break;
-# 		case 0x66: return "(0x66) Khmer"; break;
-# 		case 0x67: return "(0x67) Kazakh"; break;
-# 		case 0x68: return "(0x68) Kannada"; break;
-# 		case 0x69: return "(0x69) Japanese"; break;
-# 		case 0x6A: return "(0x6A) Indonesian"; break;
-# 		case 0x6B: return "(0x6B) Hindi"; break;
-# 		case 0x6C: return "(0x6C) Hebrew"; break;
-# 		case 0x6D: return "(0x6D) Hausa"; break;
-# 		case 0x6E: return "(0x6E) Gurani"; break;
-# 		case 0x6F: return "(0x6F) Gujurati"; break;
-# 		case 0x70: return "(0x70) Greek"; break;
-# 		case 0x71: return "(0x71) Georgian"; break;
-# 		case 0x72: return "(0x72) Fulani"; break;
-# 		case 0x73: return "(0x73) Dari"; break;
-# 		case 0x74: return "(0x74) Churash"; break;
-# 		case 0x75: return "(0x75) Chinese"; break;
-# 		case 0x76: return "(0x76) Burmese"; break;
-# 		case 0x77: return "(0x77) Bulgarian"; break;
-# 		case 0x78: return "(0x78) Bengali"; break;
-# 		case 0x79: return "(0x79) Belorussian"; break;
-# 		case 0x7A: return "(0x7A) Bambora"; break;
-# 		case 0x7B: return "(0x7B) Azerbijani"; break;
-# 		case 0x7C: return "(0x7C) Assamese"; break;
-# 		case 0x7D: return "(0x7D) Armenian"; break;
-# 		case 0x7E: return "(0x7E) Arabic"; break;
-# 		case 0x7F: return "(0x7F) Amharic"; break;
-# 		default: return "Not recognized"; break;
-# 	}
+# oanguage list take from my C++ program, which referenced an older version of the spec
 #
 #####
-
 sub interpret_langcod {
 	my $langcod_value = shift;
 	if ( $langcod_value eq 255 ) { return "reserved (default value)"; }
@@ -946,7 +950,6 @@ sub interpret_langcod {
 	if ( $langcod_value eq 125 ) { return "Armenian"; }
 	if ( $langcod_value eq 126 ) { return "Arabic"; }
 	if ( $langcod_value eq 127 ) { return "Amharic"; }
-
 	return( "not recognized" );
 }
 
@@ -954,7 +957,7 @@ sub interpret_langcod {
 #
 # interpret_mixlev()
 #
-# Interpret Mixing Level (mixlev)
+# interpret Mixing Level (mixlev)
 #
 # This 5-bit code indicates the absolute acoustic sound pressure level of an individual
 # channel during the final audio mixing session. The 5-bit code represents a value in the
@@ -975,7 +978,7 @@ sub interpret_mixlev {
 #
 # interpret_roomtyp()
 #
-# Interpret Room Type (roomtyp)
+# interpret Room Type (roomtyp)
 #
 # roomtyp		Type of Mixing Room
 # '00'			not indicated
