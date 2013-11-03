@@ -25,7 +25,7 @@ use strict;	# Enforce some good programming rules
 
 ### 	consider output to XML file, like the WAV file parser
 
-# variables/constants
+# variables
 
 my ( $input_file, $errors, $warnings, $extension, $result, $file_size );
 my ( $byte, $bitfield );
@@ -34,6 +34,9 @@ my ( $bitrate_in_kbps, $sampling_rate_in_khz, $num_words_in_syncframe );
 my ( $syncframe_size, $total_syncframes, $total_seconds );
 my ( $byte_pointer, $bit_pointer );
 my $bsi;
+my ( $bsid, $bsmod, $acmod, $cmixlev, $surmixlev, $dsurmod, $lfeon );
+my ( $bsid_bitfield, $bsmod_bitfield, $acmod_bitfield );
+my ( $cmixlev_bitfield, $surmixlev_bitfield, $dsurmod_bitfield );
 my ( $dialnorm_bitfield, $compre_bitfield, $compr_bitfield );
 my ( $langcode_bitfield, $langcod_bitfield );
 my ( $audprodie_bitfield, $mixlev_bitfield, $roomtyp_bitfield );
@@ -41,6 +44,10 @@ my ( $dialnorm, $compre, $compr, $langcode, $langcod, $audprodie, $mixlev, $room
 my ( $dialnorm2_bitfield, $compr2e_bitfield, $compr2_bitfield, $langcod2e_bitfield );
 my ( $langcod2_bitfield, $audprodi2e_bitfield, $mixlev2_bitfield, $roomtyp2_bitfield );
 my ( $dialnorm2, $compr2e, $compr2, $langcod2e, $langcod2, $audprodi2e, $mixlev2, $roomtyp2 );
+my ( $compr_dB, $compr_dB_rounded, $compr2_dB, $compr2_dB_rounded );
+my ( $copyrightb, $origbs, $timecod1e, $timecod1_bitfield, $timecod1 );
+my ( $timecod2e, $timecod2_bitfield, $timecod2, $addbsie );
+my ( $addbsil_bitfield, $addbsil, $addbsi );
 
 
 # main
@@ -165,7 +172,7 @@ FILE: foreach $input_file (@ARGV) {
 	# 	if (timecod1e) {timecod1}												// 14
 	# 	timecod2e																// 1
 	# 	if (timecod2e) {timecod2}												// 14
-	# 	addbside																// 1	(running total: 114)
+	# 	addbsie																	// 1	(running total: 114)
 	# 	if (addbsie)
 	# 	{
 	# 		addbsil																// 6	(running total: 120)
@@ -193,9 +200,6 @@ FILE: foreach $input_file (@ARGV) {
 	}
 
 	
-	my ( $bsid, $bsmod, $acmod, $cmixlev, $surmixlev, $dsurmod, $lfeon );
-	my ( $bsid_bitfield, $bsmod_bitfield, $acmod_bitfield );
-	my ( $cmixlev_bitfield, $surmixlev_bitfield, $dsurmod_bitfield );
 	
 	
 	# reset pointers
@@ -275,9 +279,9 @@ FILE: foreach $input_file (@ARGV) {
 		$bit_pointer += 8;
 	}
 	
-	my $compr_dB = compr_value( $compr_bitfield );
+	$compr_dB = compr_value( $compr_bitfield );
 	# it would be nice to round this to two decimal places
-	my $compr_dB_rounded = sprintf( "%.2f", $compr_dB );
+	$compr_dB_rounded = sprintf( "%.2f", $compr_dB );
 	
 	# Language Code
 	
@@ -308,7 +312,7 @@ FILE: foreach $input_file (@ARGV) {
 		$bit_pointer += 2;
 	}
 	
-	### in 1+1 dual mono mode, some items need a second value
+	# in 1+1 dual mono mode, some items need a second value
 	if ( $acmod eq 0 ) {
 		
 		# dialnorm2
@@ -327,6 +331,10 @@ FILE: foreach $input_file (@ARGV) {
 			$compr2 = binary_to_decimal( $compr2_bitfield );
 			$bit_pointer += 8;
 		}
+
+		$compr2_dB = compr_value( $compr_bitfield );
+		# it would be nice to round this to two decimal places
+		$compr2_dB_rounded = sprintf( "%.2f", $compr_dB );
 		
 		# langcod2e
 		$langcod2e = substr( $bitfield, $bit_pointer, 1 );
@@ -360,25 +368,48 @@ FILE: foreach $input_file (@ARGV) {
 	
 	#####	the rest of the bsi
 	
+	# Copyright Bit (copyrightb)
+	$copyrightb = substr( $bitfield, $bit_pointer, 1 );
+	$bit_pointer += 1;
 	
-# 	copyrightb																// 1
-# 	origbs																	// 1
-# 	timecod1e																// 1
-# 	if (timecod1e) {timecod1}												// 14
-# 	timecod2e																// 1
-# 	if (timecod2e) {timecod2}												// 14
-# 	addbside																// 1	(running total: 114)
-# 	if (addbsie)
-# 	{
-# 		addbsil																// 6	(running total: 120)
-# 		addbsi																// (addbisil+1)x8	(up to 64)
-# 	}
+	# Original Bit Stream (origbs)
+	$origbs = substr( $bitfield, $bit_pointer, 1 );
+	$bit_pointer += 1;
 	
+	# Timecode First Half Exists (timecod1e)
+	$timecod1e = substr( $bitfield, $bit_pointer, 1 );
+	$bit_pointer += 1;
 	
+	# Timecode First Half
+	$timecod1_bitfield = substr( $bitfield, $bit_pointer, 14 );
+	$bit_pointer += 14;
 	
+	# Timecode Second Half Exists (timecod2e)
+	$timecod2e = substr( $bitfield, $bit_pointer, 1 );
+	$bit_pointer += 1;
+	
+	# Timecode Second Half
+	$timecod2_bitfield = substr( $bitfield, $bit_pointer, 14 );
+	$bit_pointer += 14;
+	
+	# Additional Bit Stream Information Exists (addbsie)
+	$addbsie = substr( $bitfield, $bit_pointer, 1 );
+	$bit_pointer += 1;
+	
+	# addbsil / addbsi
+	if ( $addbsie ) {
+		$addbsil_bitfield = substr( $bitfield, $bit_pointer, 6 );
+		$addbsil = binary_to_decimal( $addbsil_bitfield );
+		$bit_pointer += 6;
+		
+		$addbsi = substr( $bitfield, $bit_pointer, ( ( $addbsil + 1 ) * 8 ) );
+		$bit_pointer += ( ( $addbsil + 1 ) * 8 );
+	}
 	
 	
 	### output report	
+	
+	### Bit Stream Information
 	
 	print "Bit Stream Information:\n";
 	print "Bit Stream Identification (bsid): $bsid_bitfield ($bsid) = " . interpret_bsid( $bsid ) . "\n";
@@ -405,6 +436,9 @@ FILE: foreach $input_file (@ARGV) {
 	if ( $lfeon ) { print "on\n"; } else { print "off\n"; }
 	
 	print "\n";
+	
+	### primary audio stream bsi
+	
 	print "Primary Audio Stream Information:\n";
 	
 	print "Dialog Normalizaton (dilanorm): $dialnorm_bitfield ($dialnorm) = " . interpret_dialnorm( $dialnorm ) . "\n";
@@ -437,9 +471,8 @@ FILE: foreach $input_file (@ARGV) {
 		print "$roomtyp_bitfield ($roomtyp) = " . interpret_roomtyp( $roomtyp ) . "\n";
 	} else { print "not stated\n"; }
 	
-	#####
-	# 1+1 second stream bsi
-	#####
+	### secondary audio stream BSI for 1+1 streams
+	
 	print "\n";
 	print "Secondary Audio Stream Informaion (1+1 Mode):\n";
 	
@@ -448,53 +481,86 @@ FILE: foreach $input_file (@ARGV) {
 		print "$dialnorm2_bitfield ($dialnorm2) = " . interpret_dialnorm( $dialnorm2 ) . "\n";
 	} else { print "not applicable\n"; }
 	
-# 	print "Dialog Normalizaton (dilanorm): $dialnorm_bitfield ($dialnorm) = " . interpret_dialnorm( $dialnorm ) . "\n";
-# 	
-# 	print "Compression Gain Word Exists (compre): $compre = ";
-# 	if ( $compre ) { print "true\n"; } else { print "false\n"; }
-# 	
-# 	print "Compression Gain Word (compr): ";
-# 	if ( $compre ) { print "$compr_bitfield = $compr_dB_rounded dB\n"; }
-# 	else { print "not stated\n"; }
-# 	
-# 	print "Language Code Exists (langcode): $langcode = ";
-# 	if ( $langcode ) { print "true\n"; } else { print "false\n"; }
-# 	
-# 	print "Language Code (langcod): ";
-# 	if ( $langcode ) {
-# 		print "$langcod_bitfield ($langcod) = " . interpret_langcod( $langcod ) . "\n";
-# 	} else { print "not stated\n"; }
-# 	
-# 	print "Audio Produciton Information Exists (audprodie): $audprodie = ";
-# 	if ( $audprodie ) { print "true\n"; } else { print "false\n"; }
-# 	
-# 	print "Mixing Level (mixlev): ";
-# 	if ( $audprodie ) {
-# 		print "$mixlev_bitfield ($mixlev) = " . interpret_mixlev( $mixlev ) . "\n";
-# 	} else { print "not stated\n"; }
-# 	
-# 	print "Room Type (roomtyp): ";
-# 	if ( $audprodie ) {
-# 		print "$roomtyp_bitfield ($roomtyp) = " . interpret_roomtyp( $roomtyp ) . "\n";
-# 	} else { print "not stated\n"; }
-# 	
+	print "Compression Gain Word Exists (compr2e): ";
+	if ( $acmod eq 0 ) {
+		print "$compr2e = ";
+		if ( $compr2e ) { print "true\n"; } else { print "false\n"; }
+	} else { print "not applicable\n"; }
 	
+	print "Compression Gain Word (compr2): ";
+	if ( $acmod eq 0 ) {
+		if ( $compr2e ) {
+			print "$compr2_bitfield = $compr2_dB_rounded dB\n";
+		} else { print "not stated\n"; }
+	} else { print "not applicable\n"; }
 	
-# 	if (acmod==0)	/* if in 1+1 mode (dual mono, so some items need a second value ) */
-# 	{
-# 		dialnorm2															// 5
-# 		compr2e																// 1
-# 		if (compr2e) {compr2}												// 8
-# 		langcod2e															// 1
-# 		if (langcod2e) {langcod2}											// 8
-# 		audprodi2e															// 1	(running total: 74)
-# 		if (auddprodi2e)
-# 		{
-# 			mixlev2															// 5
-# 			roomtyp2														// 2	(running total: 81)
-# 		}
-#	}
+	print "Language Code Exists (langcod2e): ";
+	if ( $acmod eq 0 ) {
+		print "$langcod2e = ";
+		if ( $langcod2e ) { print "true\n"; } else { print "false\n"; }
+	} else { print "not applicable\n"; }
 	
+	print "Language Code (langcod2): ";
+	if ( $acmod eq 0 ) {
+		if ( $langcod2e ) {
+			print "$langcod2_bitfield ($langcod2) = " . interpret_langcod( $langcod2 ) . "\n";
+		} else { print "not stated\n"; }
+	} else { print "not applicable\n"; }
+	
+	print "Audio Production Information Exists (audprodi2e): ";
+	if ( $acmod eq 0 ) {
+		print "$audprodi2e = ";
+		if ( $audprodi2e ) { print "true\n"; } else { print "false\n"; }
+	} else { print "not applicable\n"; }
+	
+	print "Mixing Level (mixlev2): ";
+	if ( $acmod eq 0 ) {
+		if ( $audprodi2e ) {
+			print "mixlev2_bitfield ($mixlev2) = " . interpret_mixlev( $mixlev2 ) . "\n";
+		} else { print "not stated\n"; }
+	} else { print "not applicable\n"; }
+	
+	print "Room Type (roomtyp2): ";
+	if ( $acmod eq 0 ) {
+		if ( $audprodi2e ) {
+			print "$roomtyp2_bitfield ($roomtyp2) = " . interpret_roomtyp( $roomtyp2 ) . "\n";
+		} else { print "not stated\n"; }
+	} else { print "not applicable\n"; }
+	print "\n";
+
+	### remainder of the bsi
+	
+	print "Copyright Bit (copyrightb): ";
+	if ( $copyrightb ) { print "true\n"; } else { print "false\n"; }
+	
+	print "Original Bit Stream (origbs): ";
+	if ( $origbs ) { print "true\n"; } else { print "false\n"; }
+	
+	print "Timecode First Half Exists (timecod1e): ";
+	if ( $timecod1e ) { print "true\n"; } else { print "false\n"; }
+	
+	print "Timecode First Half (timecod1): ";
+	if ( $timecod1e ) {
+		print "$timecod1_bitfield\n";
+	} else { print "not applicable\n"; }
+	
+	print "Timecode Second Half Exists (timecod2e): ";
+	if ( $timecod2e ) { print "true\n"; } else { print "false\n"; }
+	
+	print "Timecode Second Half (timecod2): ";
+	if ( $timecod2e ) {
+		print "$timecod2_bitfield\n";
+	} else { print "not applicable\n"; }
+	
+	print "Additional Bit Stream Information Exists (addbsie): ";
+	if ( $addbsie ) { print "true\n"; } else { print "false\n"; }
+	
+	print "Additional Bit Stream Information Length (addbsil): ";
+	if ( $addbsie ) { print "$addbsil_bitfield ($addbsil)\n"; }
+	else { print "not applicable\n"; }
+	
+	print "Additional Bit Stream Information (addbsi): ";
+	if ( $addbsie ) { print "$addbsi\n"; } else { print "not applicable\n"; }
 	
 	# finish up
 	print "\n";
