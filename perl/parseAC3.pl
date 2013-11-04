@@ -392,6 +392,15 @@ FILE: foreach $input_file (@ARGV) {
 	$timecod2_bitfield = substr( $bitfield, $bit_pointer, 14 );
 	$bit_pointer += 14;
 	
+	##### interpret time code info
+	# timecod1 5 bits = hour (0..24)
+	# timecod1 6 bits = minutes (0..59)
+	# timecod1 3 bits = 8 second increments (0, 8, 16, 24, 32, 40, 56)
+	# timecod2 3 bits = additional seconds (0..7)
+	# timecod2 5 bits = frames (0..29)
+	# timecod2 6 bits = 1/64th frame fraction (0..63)
+	#####
+	
 	# Additional Bit Stream Information Exists (addbsie)
 	$addbsie = substr( $bitfield, $bit_pointer, 1 );
 	$bit_pointer += 1;
@@ -542,7 +551,7 @@ FILE: foreach $input_file (@ARGV) {
 	print "Timecode First Half (timecod1): ";
 	if ( $timecod1e ) {
 		print "$timecod1_bitfield\n";
-	} else { print "not applicable\n"; }
+	} else { print "not stated\n"; }
 	
 	print "Timecode Second Half Exists (timecod2e): ";
 	if ( $timecod2e ) { print "true\n"; } else { print "false\n"; }
@@ -550,7 +559,12 @@ FILE: foreach $input_file (@ARGV) {
 	print "Timecode Second Half (timecod2): ";
 	if ( $timecod2e ) {
 		print "$timecod2_bitfield\n";
-	} else { print "not applicable\n"; }
+	} else { print "not stated\n"; }
+	
+	print "Timecode: ";
+	if ( $timecod1e || $timecod2e ) {
+		print "\n";								##### print the timecode itself #####
+	} else { print "not stated\n"; }
 	
 	print "Additional Bit Stream Information Exists (addbsie): ";
 	if ( $addbsie ) { print "true\n"; } else { print "false\n"; }
