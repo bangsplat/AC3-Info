@@ -25,6 +25,10 @@ use strict;	# Enforce some good programming rules
 
 ### 	consider output to XML file, like the WAV file parser
 
+# constants
+
+my $AC3_SYNC_WORD = pack( 'H[4]', "0b77" );
+
 # variables
 
 my ( $input_file, $errors, $warnings, $extension, $result, $file_size );
@@ -80,6 +84,18 @@ FILE: foreach $input_file (@ARGV) {
 	binmode( INPUT_FILE );			# binary file
 	$file_size = -s INPUT_FILE;		# get size of input file
 	
+	# the earliest versions of the A/53 spec (circa 1995) had an Annex B (Informative)
+	# which provides a mechanism for putting AC-3 bitstreams into S/PDIF streams
+	# (or, presumably AES)
+	# part of this Annex involved a preamble which could contain a timestamp
+	# meaning the first two bytes of the file might not be the AC-3 syncword
+	# 
+	# Soft Encode (and other AC-3 encoders) from this time period could add this preamble
+	# and it was still considered a valid AC-3 file,
+	# though not all decoders will recognize it (then or now)
+	# 
+	# Annex B has been replaced by a bibliography
+	
 	# the first two bytes of the file should be 0x0b77
 	# but there can be a short (16 byte) preamble in which time stamps can be written
 	# Soft Encode allowed these as optional, and my C++ program dealt with them
@@ -90,7 +106,35 @@ FILE: foreach $input_file (@ARGV) {
 	# so read the first bit and look for the syncword 0x0B77
 	# if there are 16 bytes in front of it, decode the time stamp
 	# and throw a warning
-	# 	
+	
+	my $preamble;
+	$result = read( INPUT_FILE, $preamble, 16 );		# read first 16 bytes - this could be a preamble
+	
+	my $test_word = substr( $preamble, 0, 2 );
+#	my $compare_word = pack( 'H[4]', "0b77" );			# AC-3 syncword is 0x0b77
+	
+	if ( $test_word eq $AC3_SYNC_WORD ) {
+		seek( INPUT_FILE, 0, 0 );						# rewind the file
+	} else {
+		print "WARNING: A/53 (1995) Annex B IEC958:1989 (S/PDIF) Interface Preamble Found\n";
+		$warnings++;
+		
+		# try to extract a timestamp
+	}
+	
+#	$syncword = unpack( 'H[4]', substr( $syncinfo, 0, 2 ) );
+
+
+	
+#	$result = read( INPUT_FILE, $syncinfo, 5 );
+#	if ( $result == undef ) {
+#		print "$input_file: error: could not read syncinfo() $1\n";
+#		$errors++;
+#		print "$input_file: aborting with $errors errors and $warnings warnings\n";
+#		close( INPUT_FILE );
+#		next FILE;
+#	}
+
 	
 	###
 	###	there is sometimes a 16 byte preamble that contains a timecode
