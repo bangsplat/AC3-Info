@@ -6,7 +6,7 @@ use strict;	# Enforce some good programming rules
 # 	parseAC3.pl
 # 	version:	0.9
 # 	created:	2011-03-31
-# 	modified:	2011-03-31
+# 	modified:	2013-11-04
 # 	author:		Theron Trowbridge
 #
 # 	description:
@@ -79,6 +79,170 @@ FILE: foreach $input_file (@ARGV) {
 	
 	binmode( INPUT_FILE );			# binary file
 	$file_size = -s INPUT_FILE;		# get size of input file
+	
+	###
+	###	there is sometimes a 16 byte preamble that contains a timecode
+	### I am having trouble finding documentation on this
+	### it might be a really old standard, but SoftEncode supports it
+	### and I built in support in my old AC3Info tool
+	### 
+	### if first two bytes are not the expected 0x0B77,
+	### we need to scan forward to find them
+	### according to the C++ code
+	### first three bytes are some sort of header
+	### 01 10 00 - probably a ID and preamble size?
+	### then 8 bits for hours???
+	### 	4 bits for 10s place
+	###		4 bits for 1s place
+	### then 8 bits of nothing???
+	### then 8 bits for minutes???
+	###		4 bits for the 10s place
+	### 	4 bits for the 1s place
+	### then 8 bits of nothing???
+	### then 8 bits for seconds???
+	###		4 bits for the 10s place
+	### 	4 bits for the 1s place
+	### then 8 bits of nothing???
+	### then 8 bits for frames???
+	###		4 bits for the 10s place
+	### 	4 bits for the 1s place
+	### then 8 bits of nothing???
+	### then 16 bits for sample number???
+	###	
+	### byte	value
+	###	0		header
+	### 1		header
+	### 2		header
+	### 3		hours
+	### 4		0x00
+	### 5		minutes
+	### 6		0x00
+	### 7		seconds
+	### 8		0x00
+	### 9		frames
+	### 10		sample
+	### 11		sample
+	### 12		
+	### 13		
+	### 14		
+	### 15		
+	### 
+	### that leaves us some left over bytes and I don't know what they are
+	### in my sample file they're the same - 00 14 22 06
+	###
+	
+	###
+	### sample preambles:
+	###
+	###	01 10 00 00 00 00 00 00 00 00 00 00 00 14 22 06
+	###	01 10 00 00 00 01 00 08 00 1F 01 C0 00 14 22 06
+	###
+	###
+	###	header		hours		minutes		seconds		frames	samples		?? ?? ?? ??
+	###	01 10 00	00	00		01	00		08	00		1F		01 C0		00 14 22 06
+	###	01 10 00	00	00		00	00		00	00		00		00 00		00 14 22 06
+	###
+	### 1F =	0001 1111
+	###			1*10 = 10	+	15 = 25
+	### 01 C0	0000 0001 1100 0000 = 448
+	###	does this match what AC3Info says?		YES!!!
+
+	
+	#	code from C++ program
+	#
+	# void CUTimecode::SetTC(CFile *ac3File)
+	# {
+	# 	//	Read the user time code from the current syncframe preamble
+	# 	//	and set our member variables with it
+	# 	//
+	# 	//	Assumption: file pointer of ac3File sits just after a 16-byte preamble
+	# 	//	Back up and read the user time code from that preamble
+	# 	//	When done, return the file pointer to where it was
+	# 
+	# 	CString			bitString, digit1, digit2;
+	# 	UINT			nBytesRead;
+	# 	int				i, c = 0;
+	# 	unsigned char	byte, buffer[20];
+	# 
+	# 	m_bE = true;
+	# 
+	# 	ac3File->Seek( -16, CFile::current );		//	Back up to preamble start
+	# 	nBytesRead = ac3File->Read( buffer, 16 );	//	Read the preamble
+	# 	//	Do some error checking here
+	# 
+	# 	c += 3;	//	Skip first three bytes
+	# 
+	# 	byte = buffer[c++];
+	# 	bitString = ByteToBits( byte );			//	Convert to bitstring
+	# 	digit1.Empty();
+	# 	digit2.Empty();
+	# 	for ( i = 0; i < 4; i++ )
+	# 	{
+	# 		digit1 += bitString.GetAt( i );		//	Extract 10's digit
+	# 		digit2 += bitString.GetAt( i + 4 );	//	Extract 1's digit
+	# 	}
+	# 	m_nHH = 10 * BitsToDecimal( digit1 );	//	Set hours member
+	# 	m_nHH += BitsToDecimal( digit2 );
+	# 
+	# 	c++;									//	Skip 1 byte
+	# 
+	# 	//	Set Minutes member
+	# 	byte = buffer[c++];
+	# 	bitString = ByteToBits( byte );
+	# 	digit1.Empty();
+	# 	digit2.Empty();
+	# 	for ( i = 0; i < 4; i++ )
+	# 	{
+	# 		digit1 += bitString.GetAt( i );
+	# 		digit2 += bitString.GetAt( i + 4 );
+	# 	}
+	# 	m_nMM = 10 * BitsToDecimal( digit1 );
+	# 	m_nMM += BitsToDecimal( digit2 );
+	# 
+	# 	c++;
+	# 
+	# 	//	Set Seconds member
+	# 	byte = buffer[c++];
+	# 	bitString = ByteToBits( byte );
+	# 	digit1.Empty();
+	# 	digit2.Empty();
+	# 	for ( i = 0; i < 4; i++ )
+	# 	{
+	# 		digit1 += bitString.GetAt( i );
+	# 		digit2 += bitString.GetAt( i + 4 );
+	# 	}
+	# 	m_nSS = 10 * BitsToDecimal( digit1 );
+	# 	m_nSS += BitsToDecimal( digit2 );
+	# 
+	# 	c++;
+	# 
+	# 	//	Set Frames member
+	# 	byte = buffer[c++];
+	# 	bitString = ByteToBits( byte );
+	# 	digit1.Empty();
+	# 	digit2.Empty();
+	# 	for ( i = 0; i < 4; i++ )
+	# 	{
+	# 		digit1 += bitString.GetAt( i );
+	# 		digit2 += bitString.GetAt( i + 4 );
+	# 	}
+	# 	m_nFF = 10 * BitsToDecimal( digit1 );
+	# 	m_nFF += BitsToDecimal( digit2 );
+	# 
+	# 	//	Set Samples member
+	# 	byte = buffer[c++];
+	# 	bitString = ByteToBits( byte );
+	# 	byte = buffer[c++];
+	# 	bitString += ByteToBits( byte );
+	# 	m_nWW = BitsToDecimal( bitString );
+	# 
+	# 	//	There is no drop frame flag in the TC data
+	# 	//	Leave the DF flag alone (must be set separately)
+	# 	//	If I try to do it here, we get an error
+	# }
+
+
+	
 	
 	# read Synchronization Information
 	#
@@ -584,7 +748,6 @@ FILE: foreach $input_file (@ARGV) {
 
 
 
-
 # subroutines
 
 #####
@@ -1073,4 +1236,59 @@ sub interpret_roomtyp {
 	if ( $roomtyp_value eq 1 ) { return "large room, X curve monitor"; }
 	if ( $roomtyp_value eq 2 ) { return "small room, flat monitor"; }
 	if ( $roomtyp_value eq 3 ) { return "reserved"; }
+}
+
+#####
+#
+# decode_timecode()
+#
+# take timecod1 and timecod2 and turn them into a formatted timecode value
+# HH:MM:SS:FF+ff
+# (+ff = 1/64th frame fraction)
+#
+# 	timecod1
+# 	00 01 02 03 04 05 06 07 08 09 10 11 12 13
+# 	HH HH HH HH HH MM MM MM MM MM MM SS SS SS
+#
+# 	timecod2
+# 	00 01 02 03 04 05 06 07 08 09 10 11 12 13
+# 	SS SS SS FF FF FF FF FF ff ff ff ff ff ff
+#
+# 	timecod1 5 bits = hour (0..24)
+# 	timecod1 6 bits = minutes (0..59)
+# 	timecod1 3 bits = 8 second increments (0, 8, 16, 24, 32, 40, 56)
+# 	timecod2 3 bits = additional seconds (0..7)
+# 	timecod2 5 bits = frames (0..29)
+# 	timecod2 6 bits = 1/64th frame fraction (0..63)
+#
+# both bitfields are NOT necessary to decode a timecode that is usable
+# how do handle this?
+#
+# I can't 
+#
+#####
+sub decode_timecode {
+	my $timecod1_value = shift;
+	my $timecod2_value = shift;
+	
+	my ( $output, $hours, $minutes, $seconds, $frames, $fraction );
+	my ( $hour_bits, $minute_bits, $big_second_bits );
+	my ( $little_second_bits, $frame_bits, $fraction_bits );
+	
+	$hour_bits = substr( $timecod1_value, 0, 5 );
+	$minute_bits = substr( $timecod1_value, 5, 6 );
+	$big_second_bits = substr( $timecod1_value, 11, 3 );
+	$little_second_bits = substr( $timecod2_value, 0, 3 );
+	$frame_bits = substr( $timecod2_value, 3, 5 );
+	$fraction_bits = substr( $timecod2_value, 8, 6 );
+	
+	$hours = sprintf( "%02d", binary_to_decimal( $hour_bits ) );
+	$minutes = sprintf( "%02d", binary_to_decimal( $minute_bits ) );
+	$seconds = sprintf( "%02d", ( binary_to_decimal( $big_second_bits) * 8 ) + binary_to_decimal( $little_second_bits ) );
+	$frames = sprintf( "%02d", binary_to_decimal( $frame_bits ) );
+	$fraction = sprintf( "%02d", binary_to_decimal( $fraction_bits ) );
+	
+	$output = "$hours:$minutes:$seconds:$frames+$fraction";
+	
+	return $output;
 }
