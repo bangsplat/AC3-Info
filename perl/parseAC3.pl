@@ -96,6 +96,27 @@ FILE: foreach $input_file (@ARGV) {
 	# 
 	# Annex B has been replaced by a bibliography
 	
+	###	rewind file
+	###	read a byte into a buffer
+	### read a byte at a time and add to the buffer
+	### 	check to see if last two bytes are "0x0b77" (AC-3 syncword)
+	### rewind to before the syncword
+	### all bytes prior to syncword are a preamble
+	
+	# preamble is detailed in A/52-1995, Annex B section 4.4
+	#	preamble starts with 64 bits
+	# 	Preamble Word		Contents
+	# 	Pa					16-bit sync word 1 = 0xF872
+	# 	Pb					16-bit sync word 2 = 0x4E1F
+	# 	Pc					16-bit burst_info value
+	# 	Pd					16-bit length_code (unsigned integer)
+	# 							equal to number of data bits in the following data burst
+	#
+	# but this isn't actually the format used
+	#
+	# time stamps are detailed in Annex B section 4.8
+	
+	
 	# the first two bytes of the file should be 0x0b77
 	# but there can be a short (16 byte) preamble in which time stamps can be written
 	# Soft Encode allowed these as optional, and my C++ program dealt with them
