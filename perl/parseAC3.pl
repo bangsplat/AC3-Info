@@ -80,6 +80,18 @@ FILE: foreach $input_file (@ARGV) {
 	binmode( INPUT_FILE );			# binary file
 	$file_size = -s INPUT_FILE;		# get size of input file
 	
+	# the first two bytes of the file should be 0x0b77
+	# but there can be a short (16 byte) preamble in which time stamps can be written
+	# Soft Encode allowed these as optional, and my C++ program dealt with them
+	# but there is no mention in the current version of the A/52 spec
+	# so no current AC-3 streams should have the preambles,
+	# but it would be good to be able to detect them anyhow, as older streams may have them
+	# 
+	# so read the first bit and look for the syncword 0x0B77
+	# if there are 16 bytes in front of it, decode the time stamp
+	# and throw a warning
+	# 	
+	
 	###
 	###	there is sometimes a 16 byte preamble that contains a timecode
 	### I am having trouble finding documentation on this
