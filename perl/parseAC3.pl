@@ -115,7 +115,19 @@ FILE: foreach $input_file (@ARGV) {
 	# but this isn't actually the format used
 	#
 	# time stamps are detailed in Annex B section 4.8
-	
+	# 
+	# 4.8.2 Time stamp payload
+	# 	The time stamp payload, shown in Table 8, has a minimum length of six 16-bit words
+	# 	which have a defined meaning. Additional 16-bit words may be optionally added,
+	# 	but the meaning of these words is not specified.
+	#
+	# 
+	# 01 10 00 00 00 00 00 00 00 00 00 00 00 14 22 06
+	# 01 10 00 00 00 01 00 08 00 1F 01 C0 00 14 22 06
+	# 
+	# Table 8 shows the bits and I don't get it
+	# it doesn't seem to mesh with my C++ code
+	# 
 	
 	# the first two bytes of the file should be 0x0b77
 	# but there can be a short (16 byte) preamble in which time stamps can be written
