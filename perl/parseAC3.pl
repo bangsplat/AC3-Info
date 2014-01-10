@@ -6,7 +6,7 @@ use strict;	# Enforce some good programming rules
 # 	parseAC3.pl
 # 	version:	0.9
 # 	created:	2011-03-31
-# 	modified:	2013-11-04
+# 	modified:	2014-01-09
 # 	author:		Theron Trowbridge
 #
 # 	description:
@@ -141,6 +141,7 @@ FILE: foreach $input_file (@ARGV) {
 	# and throw a warning
 	
 	my $preamble;
+	
 	$result = read( INPUT_FILE, $preamble, 16 );		# read first 16 bytes - this could be a preamble
 	
 	my $test_word = substr( $preamble, 0, 2 );
@@ -151,8 +152,18 @@ FILE: foreach $input_file (@ARGV) {
 	} else {
 		print "WARNING: A/53 (1995) Annex B IEC958:1989 (S/PDIF) Interface Preamble Found\n";
 		$warnings++;
-		
+
 		# try to extract a timestamp
+		print "First preamble timecode: " . decode_preamble_timecode( $preamble ) . "\n";
+		
+#		print "***** preamble timecode: " . decode_preamble_timecode( $preamble ) . " *****\n";
+		
+#		my $test_value = pack( 'H32', "0110000000010008001E020000142206" );
+#		my $test_value = pack( 'H32', "0110000000010008001E020000142206" );
+#		my $test_timecode = decode_preamble_timecode( $test_value );
+#		print "***** test timecode: $test_timecode *****\n";
+		#####
+		
 	}
 	
 #	$syncword = unpack( 'H[4]', substr( $syncinfo, 0, 2 ) );
@@ -1380,4 +1391,72 @@ sub decode_timecode {
 	$output = "$hours:$minutes:$seconds:$frames+$fraction";
 	
 	return $output;
+}
+
+sub decode_preamble_timecode {
+	my $preamble = shift;
+	my $timecode;
+	
+	my $preamble_pointer;
+	my ( $pre_hours_byte, $pre_minutes_byte, $pre_seconds_byte, $pre_frames_byte, $pre_samples_word );
+	my ( $pre_hours, $pre_minutes, $pre_seconds, $pre_frames, $pre_samples );
+	
+	# first three bytes of preamble are a header of some sort
+	# is 0x 01 10 00 in all examples I have
+	# so we'll just skip it
+	$preamble_pointer = 3;
+	
+	# get hours
+	$pre_hours_byte = substr( $preamble, $preamble_pointer++, 1 );
+	$pre_hours = (10 * ( ord( pack( 'B8', ( "0000" . substr( unpack( 'B8', $pre_hours_byte), 0, 4 ) ) ) ) ) ) +
+		( ord( pack( 'B8', ( "0000" . substr( unpack( 'B8', $pre_hours_byte ), 4, 4 ) ) ) ) );
+#	print "***** preamble hours hex: " . unpack( "H*", $pre_hours_byte ) . " *****\n";
+#	print "***** preamble hours: $pre_hours *****\n";
+#	print "\n";
+	
+	# skip over next (empty) byte
+	$preamble_pointer++;
+	
+	# get minutes
+	$pre_minutes_byte = substr( $preamble, $preamble_pointer++, 1 );
+	$pre_minutes = (10 * ( ord( pack( 'B8', ( "0000" . substr( unpack( 'B8', $pre_minutes_byte), 0, 4 ) ) ) ) ) ) +
+		( ord( pack( 'B8', ( "0000" . substr( unpack( 'B8', $pre_minutes_byte ), 4, 4 ) ) ) ) );
+#	print "***** preamble minutes hex: " . unpack( "H*", $pre_minutes_byte ) . " *****\n";
+#	print "***** preamble minutes: $pre_minutes *****\n";
+#	print "\n";
+	
+	# skip over next (empty) byte
+	$preamble_pointer++;
+	
+	# get seconds
+	$pre_seconds_byte = substr( $preamble, $preamble_pointer++, 1 );
+	$pre_seconds = (10 * ( ord( pack( 'B8', ( "0000" . substr( unpack( 'B8', $pre_seconds_byte), 0, 4 ) ) ) ) ) ) +
+		( ord( pack( 'B8', ( "0000" . substr( unpack( 'B8', $pre_seconds_byte ), 4, 4 ) ) ) ) );
+#	print "***** preamble seconds hex: " . unpack( "H*", $pre_seconds_byte ) . " *****\n";
+#	print "***** preamble seconds: $pre_seconds *****\n";
+#	print "\n";	
+	
+	$preamble_pointer++;
+	
+	# get frames
+	$pre_frames_byte = substr( $preamble, $preamble_pointer++, 1 );
+	$pre_frames = (10 * ( ord( pack( 'B8', ( "0000" . substr( unpack( 'B8', $pre_frames_byte), 0, 4 ) ) ) ) ) ) +
+		( ord( pack( 'B8', ( "0000" . substr( unpack( 'B8', $pre_frames_byte ), 4, 4 ) ) ) ) );
+#	print "***** preamble frames hex: " . unpack( 'H*', $pre_frames_byte ) . " *****\n";
+#	print "***** preamble frames: $pre_frames *****\n";
+#	print "\n";
+	
+	# get samples
+	$pre_samples_word = substr( $preamble, $preamble_pointer, 2 );
+	$pre_samples = binary_to_decimal( unpack( 'B16', $pre_samples_word ) );
+#	print "***** preamble samples hex: " . unpack( 'H*', $pre_samples_word ) . " *****\n";
+#	print "***** preamble samples: $pre_samples *****\n";
+	
+	$timecode = sprintf( '%02d', $pre_hours ) . ":" .
+				sprintf( '%02d', $pre_minutes ) . ":" .
+				sprintf( '%02d', $pre_seconds ) . ":" .
+				sprintf( '%02d', $pre_frames ) . "+" .
+				sprintf( '%04d', $pre_samples );
+	
+	return( $timecode );
 }
