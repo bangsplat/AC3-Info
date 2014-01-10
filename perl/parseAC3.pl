@@ -96,13 +96,6 @@ FILE: foreach $input_file (@ARGV) {
 	# 
 	# Annex B has been replaced by a bibliography
 	
-	###	rewind file
-	###	read a byte into a buffer
-	### read a byte at a time and add to the buffer
-	### 	check to see if last two bytes are "0x0b77" (AC-3 syncword)
-	### rewind to before the syncword
-	### all bytes prior to syncword are a preamble
-	
 	# preamble is detailed in A/52-1995, Annex B section 4.4
 	#	preamble starts with 64 bits
 	# 	Preamble Word		Contents
@@ -156,19 +149,14 @@ FILE: foreach $input_file (@ARGV) {
 		# try to extract a timestamp
 		print "First preamble timecode: " . decode_preamble_timecode( $preamble ) . "\n";
 		
-#		print "***** preamble timecode: " . decode_preamble_timecode( $preamble ) . " *****\n";
-		
-#		my $test_value = pack( 'H32', "0110000000010008001E020000142206" );
+		### ideally, we should grab the last preamble timecode as well
+
+# test for last preamble timecode in the file		
 #		my $test_value = pack( 'H32', "0110000000010008001E020000142206" );
 #		my $test_timecode = decode_preamble_timecode( $test_value );
 #		print "***** test timecode: $test_timecode *****\n";
-		#####
 		
 	}
-	
-#	$syncword = unpack( 'H[4]', substr( $syncinfo, 0, 2 ) );
-
-
 	
 #	$result = read( INPUT_FILE, $syncinfo, 5 );
 #	if ( $result == undef ) {
